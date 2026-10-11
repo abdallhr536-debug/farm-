@@ -1,0 +1,175 @@
+@if (!me) {
+<main class="lg">
+  <h3>🐔 نظام إدارة المزرعة</h3>
+  @if (d('users').length === 0) {
+    <div class="c"><b>إنشاء حساب المدير (أول مرة)</b>
+      <label>الاسم</label><input [(ngModel)]="su.name">
+      <label>الإيميل</label><input type="email" [(ngModel)]="su.email">
+      <label>رقم التليفون</label><input [(ngModel)]="su.phone">
+      <label>كلمة المرور</label><input type="password" [(ngModel)]="su.pass">
+      @if (err) { <p class="err">{{ err }}</p> }
+      <div class="row"><button class="btn" (click)="doSetup()">إنشاء</button></div>
+    </div>
+  } @else {
+    <div class="c"><b>تسجيل الدخول</b>
+      <label>الإيميل أو رقم التليفون</label><input [(ngModel)]="lg.id">
+      <label>كلمة المرور</label><input type="password" [(ngModel)]="lg.pw" (keyup.enter)="doLogin()">
+      @if (err) { <p class="err">{{ err }}</p> }
+      <div class="row"><button class="btn" (click)="doLogin()">دخول</button></div>
+    </div>
+  }
+</main>
+} @else {
+<div class="top"><b>🐔 {{ me.name }} <span class="tag">{{ me.role }}</span></b><button class="btn g" (click)="logout()">خروج</button></div>
+<nav>
+  <button [class.on]="cur === 'home'" (click)="cur = 'home'">الرئيسية</button>
+  @for (t of tabs; track t.k) { <button [class.on]="cur === t.k" (click)="cur = t.k">{{ t.t }}</button> }
+</nav>
+
+<main>
+@if (cur === 'home') {
+  <div class="grid">
+    @if (active) {
+      <div class="c w"><small>الدورة الجارية</small><b>{{ active.name }}</b>
+        <small>الدكتور: {{ active.vet }} — بدأت {{ active.start }}</small></div>
+      @if (me.role !== 'عامل') {
+        <div class="c"><small>الفراخ الموجودة</small><b>{{ fmt(active.count - dead) }}</b></div>
+        <div class="c"><small>إجمالي النافق</small><b>{{ fmt(dead) }}</b></div>
+      }
+    } @else {
+      <div class="c w"><small>لا توجد دورة جارية</small></div>
+    }
+    @if (can('dead', 'r')) { <div class="c"><small>نافق اليوم</small><b>{{ fmt(deadToday()) }}</b></div> }
+    @if (can('feed', 'r')) {
+      <div class="c"><small>علف خارج اليوم</small><b>{{ fmt(feed('صادر', true)) }}</b></div>
+      @if (me.role !== 'عامل') { <div class="c"><small>رصيد العلف (كجم)</small><b>{{ fmt(feed('وارد') - feed('صادر')) }}</b></div> }
+    }
+    @if (me.role === MGR || me.role === 'مهندس') {
+      <div class="c"><small>علف مستهلك من بداية الدورة</small><b>{{ fmt(since('feed', 'صادر')) }}</b></div>
+      <div class="c"><small>غاز من بداية الدورة</small><b>{{ fmt(since('gas')) }}</b></div>
+      <div class="c"><small>مياه من بداية الدورة</small><b>{{ fmt(since('water')) }}</b></div>
+      <div class="c"><small>أدوية خارجة من بداية الدورة</small><b>{{ fmt(since('meds', 'صادر')) }}</b></div>
+    }
+    @if (me.role === MGR) {
+      <div class="c"><small>إجمالي السلف</small><b>{{ fmt(sum(d('adv'), 'amt')) }}</b></div>
+      <div class="c"><small>إجازات معلقة</small><b>{{ fmt(pendingLeaves) }}</b></div>
+    }
+  </div>
+
+  @if (todayMeals.length) {
+    <h3>أكل النهارده</h3>
+    <div class="grid">@for (m of todayMeals; track m.id) { <div class="c"><small>{{ m.avail }}</small><b>{{ m.meal }}</b></div> }</div>
+  }
+  @if (can('meds', 'r') && meds.length) {
+    <h3>مخزن الأدوية (الرصيد)</h3>
+    <div class="grid">
+      @for (m of meds; track m.n) { <div class="c"><small>{{ m.n }}</small><b [style.color]="m.q <= 0 ? 'var(--rd)' : null">{{ fmt(m.q) }}</b></div> }
+    </div>
+  }
+  @if (me.role === MGR) {
+    <h3>الفريق</h3>
+    <div class="grid">
+      @for (r of roles2; track r) { <div class="c"><small>{{ r }}</small><b>{{ fmt(cnt(r)) }}</b></div> }
+    </div>
+  }
+} @else if (cur === 'payroll') {
+  <div class="bar"><b>المرتبات</b><input type="month" [(ngModel)]="pm" style="width:auto"></div>
+  <div class="tw"><table>
+    <tr><th>الاسم</th><th>الوظيفة</th><th>اليومية</th><th>أيام الشغل</th><th>إجازة</th><th>غياب</th><th>الخصومات</th><th>السلف</th><th>الصافي</th><th>تسجيل اليوم</th></tr>
+    @for (x of payrollRows; track x.u.id) {
+      <tr>
+        <td>{{ x.u.name }}</td><td>{{ x.u.role }}</td><td>{{ fmt(x.u.wage) }}</td><td>{{ x.c.days }}</td>
+        <td>{{ x.c.leaves }}</td><td>{{ x.c.absent }}</td><td>{{ fmt(x.c.ded) }}</td><td>{{ fmt(x.c.adv) }}</td>
+        <td><b>{{ fmt(x.c.net) }}</b></td>
+        <td><button class="btn g" (click)="mark(x.u, 'حضور')">حضور</button> <button class="btn d" (click)="mark(x.u, 'غياب')">غياب</button></td>
+      </tr>
+    }
+  </table></div>
+  <p class="note">الصافي = (أيام الحضور × اليومية) − الخصومات − السلف. الإجازات والحضور من تبويب «الحضور».</p>
+} @else if (cur === 'perms') {
+  <div class="bar"><b>الصلاحيات</b></div>
+  <div class="tw"><table>
+    <tr><th>القسم</th>@for (r of roles2; track r) { <th>{{ r }}</th> }</tr>
+    @for (k of keys; track k) {
+      <tr><td>{{ M[k].t }}</td>
+        @for (r of roles2; track r) {
+          <td>@for (p of PERMS; track p.k) {
+            <label class="ck"><input type="checkbox" [checked]="has(k, r, p.k)" (change)="toggle(k, r, p.k)">{{ p.l }}</label>
+          }</td>
+        }
+      </tr>
+    }
+  </table></div>
+} @else {
+  <div class="bar">
+    <b>{{ M[cur].t }} ({{ fmt(v(cur).length) }})</b>
+    @if (can(cur, 'a')) { <button class="btn" (click)="open(cur)">+ إضافة</button> }
+  </div>
+
+  @if (!can(cur, 'r')) {
+    <div class="c empty">تقدر تضيف فقط، والعرض للمدير</div>
+  } @else if (cur === 'cams') {
+    @for (c of d('cams'); track c.id) {
+      <div class="cam">
+        <b>{{ c.name }}</b> <span class="tag">{{ c.loc }}</span>
+        <button class="btn d" (click)="open('cams', c)">تعديل</button>
+        @if (c.url) {
+          @if (c.kind === 'صورة / MJPEG') { <img [src]="c.url" alt=""> } @else { <iframe [src]="safe(c.url)" allowfullscreen></iframe> }
+          <div><a [href]="c.url" target="_blank" rel="noopener">فتح البث في نافذة جديدة</a></div>
+        }
+      </div>
+    } @empty {
+      <div class="c empty">لا توجد كاميرات</div>
+    }
+    <p class="note">RTSP لا يعمل في المتصفح — حوّله إلى HLS أو MJPEG أو صفحة iframe.</p>
+  } @else if (v(cur).length === 0) {
+    <div class="c empty">لا توجد سجلات بعد</div>
+  } @else {
+    <div class="tw"><table>
+      <tr>@for (f of cols(cur); track f.k) { <th>{{ f.l }}</th> } <th>بواسطة</th></tr>
+      @for (r of rows(cur); track r.id) {
+        <tr class="r" (click)="can(cur, 'e') && open(cur, r)">
+          @for (f of cols(cur); track f.k) {
+            @if (f.t === 'file') {
+              <td>@if (r[f.k]) { <img class="th" [src]="r[f.k]" alt=""> }</td>
+            } @else if (f.k === 'type') {
+              <td><span class="tag" [class.o]="r[f.k] === 'صادر'">{{ r[f.k] }}</span></td>
+            } @else {
+              <td>{{ f.t === 'number' ? fmt(r[f.k]) : r[f.k] }}</td>
+            }
+          }
+          <td>{{ r.by }}</td>
+        </tr>
+      }
+    </table></div>
+  }
+}
+</main>
+
+@if (edit) {
+  <div class="ov" (click)="edit = null">
+    <div class="box" (click)="$event.stopPropagation()">
+      <b>{{ edit.id ? 'تعديل' : 'إضافة' }} — {{ M[edit.k].t }}</b>
+      @for (f of M[edit.k].f; track f.k) {
+        <label>{{ f.l }}</label>
+        @if (f.t === 'select') {
+          <select [(ngModel)]="form[f.k]">
+            @for (o of options(f); track o) { <option [value]="o">{{ o }}</option> }
+          </select>
+        } @else if (f.t === 'file') {
+          <input type="file" accept="image/*" (change)="pick($event, f.k)">
+          @if (form[f.k]) { <img class="th" [src]="form[f.k]" alt=""> }
+        } @else {
+          <input [type]="f.t || 'text'" [(ngModel)]="form[f.k]" [attr.step]="f.t === 'number' ? 'any' : null">
+        }
+      }
+      <div class="row">
+        <button class="btn" (click)="save()">حفظ</button>
+        <button class="btn g" (click)="edit = null">إلغاء</button>
+        @if (edit.id && can(edit.k, 'd')) { <button class="btn d" (click)="remove()">حذف</button> }
+        @if (edit.id && edit.k === 'users' && me.role === MGR) { <button class="btn d" (click)="terminate()">إنهاء الخدمة</button> }
+      </div>
+    </div>
+  </div>
+}
+}
